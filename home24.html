@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Product Search</title>
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+            integrity="sha384-SgOJa3DmI69IUzQ2PVdRZhwQ+dy64/BUtbMJw1MZ8t5HZApcHrRKUc4W0kG879m7"
+            crossorigin="anonymous"
+        />
+        <script
+            src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-k6d4wzSIapyDyv1kpU366/PK5hCdSbCRGRCMv+eplOQJWyd1fbcAu9OCUj5zNLiq"
+            crossorigin="anonymous"
+            defer
+        ></script>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Product Search</h1>
+            <form id="searchForm">
+                <input
+                    type="text"
+                    id="sentenceInput"
+                    placeholder="Enter a search sentence..."
+                    required
+                />
+                <button type="submit">Search</button>
+            </form>
+            <div
+                id="loading"
+                class="spinner-border"
+                style="display: none; font-style: italic"
+            >
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div id="results"></div>
+        </div>
+
+        <script>
+            document
+                .getElementById("searchForm")
+                .addEventListener("submit", async function (e) {
+                    e.preventDefault();
+                    const sentence =
+                        document.getElementById("sentenceInput").value;
+
+                    // Send POST request to the server endpoint
+                    try {
+                        document.getElementById("loading").style.display =
+                            "block";
+                        const response = await fetch(
+                            "http://localhost:8000/get",
+                            {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ sentence: sentence }),
+                            },
+                        );
+
+                        if (!response.ok) {
+                            throw new Error("Network response was not ok");
+                        }
+
+                        const products = await response.json();
+                        displayProducts(products);
+                        document.getElementById("loading").style.display =
+                            "none";
+                    } catch (error) {
+                        console.error("Error:", error);
+                        alert("An error occurred while fetching products.");
+                        document.getElementById("loading").style.display =
+                            "none";
+                    }
+                });
+
+            function displayProducts(products) {
+                const resultsContainer = document.getElementById("results");
+                resultsContainer.innerHTML = ""; // Clear previous results
+
+                products.forEach((product) => {
+                    const card = document.createElement("div");
+                    card.classList.add("product-card");
+
+                    // Product image
+                    const img = document.createElement("img");
+                    img.src = product.image_url;
+                    img.alt = product.name;
+                    card.appendChild(img);
+
+                    // Product name
+                    const name = document.createElement("div");
+                    name.classList.add("product-name");
+                    name.textContent = product.name;
+                    card.appendChild(name);
+
+                    // Product price
+                    const price = document.createElement("div");
+                    price.classList.add("product-price");
+                    // Format price; assumes product.price_eur is a number.
+                    price.textContent = `€${product.price_eur}`;
+                    card.appendChild(price);
+
+                    resultsContainer.appendChild(card);
+                });
+            }
+        </script>
+
+    </body>
+    <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+            }
+
+            .container {
+                max-width: 800px;
+                margin: 0 auto;
+            }
+
+            #searchForm {
+                margin-bottom: 20px;
+            }
+
+            input[type="text"] {
+                width: 80%;
+                padding: 10px;
+                margin-right: 10px;
+                font-size: 16px;
+            }
+
+            button {
+                padding: 10px 15px;
+                font-size: 16px;
+                cursor: pointer;
+            }
+
+            #results {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+            }
+
+            .product-card img {
+                max-width: 100%;
+                height: auto;
+                border-bottom: 1px solid #ddd;
+                margin-bottom: 10px;
+            }
+        </style>
+</html>
