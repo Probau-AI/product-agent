@@ -1,7 +1,14 @@
 {
-  "build": {
-    "env": {
-      "PORT": "8000"
+  "builds": [
+    {
+      "src": "Dockerfile",
+      "use": "@vercel/docker"
     }
-  }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/"
+    }
+  ]
 }
