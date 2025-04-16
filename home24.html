@@ -17,138 +17,186 @@
         ></script>
     </head>
     <body>
-        <div class="container">
+        <div class="container mt-4">
             <h1>Product Search</h1>
-            <form id="searchForm">
-                <input
-                    type="text"
-                    id="sentenceInput"
-                    placeholder="Enter a search sentence..."
-                    required
-                />
-                <button type="submit">Search</button>
+            <form id="searchForm" class="mb-3">
+                <div class="input-group">
+                    <input
+                        type="text"
+                        id="sentenceInput"
+                        class="form-control"
+                        placeholder="Enter a search sentence (e.g., 'red sofa')..."
+                        required
+                    />
+                    <button type="submit" class="btn btn-primary">Search</button>
+                </div>
             </form>
-            <div
-                id="loading"
-                class="spinner-border"
-                style="display: none; font-style: italic"
-            >
-                <span class="visually-hidden">Loading...</span>
+
+            <div id="results" class="row row-cols-1 row-cols-md-3 g-4 mb-3">
+                </div>
+
+            <div class="text-center mb-3">
+                 <div
+                    id="loading"
+                    class="spinner-border text-primary"
+                    role="status"
+                    style="display: none;"
+                >
+                    <span class="visually-hidden">Loading...</span>
+                </div>
             </div>
-            <div id="results"></div>
+
+             <div class="text-center">
+                <button id="loadMoreBtn" class="btn btn-secondary" style="display: none;">Load More</button>
+            </div>
+
         </div>
 
         <script>
-            document
-                .getElementById("searchForm")
-                .addEventListener("submit", async function (e) {
-                    e.preventDefault();
-                    const sentence =
-                        document.getElementById("sentenceInput").value;
+            const searchForm = document.getElementById("searchForm");
+            const sentenceInput = document.getElementById("sentenceInput");
+            const resultsContainer = document.getElementById("results");
+            const loadingIndicator = document.getElementById("loading");
+            const loadMoreBtn = document.getElementById("loadMoreBtn");
 
-                    // Send POST request to the server endpoint
-                    try {
-                        document.getElementById("loading").style.display =
-                            "block";
-                        const response = await fetch(
-                            "http://localhost:8000/get",
-                            {
-                                method: "POST",
-                                headers: {
-                                    "Content-Type": "application/json",
-                                },
-                                body: JSON.stringify({ sentence: sentence }),
-                            },
-                        );
+            let currentOffset = 0;
+            const productsPerPage = 10; // Corresponds to the 'limit' in the backend
+            let currentSentence = ""; // Store the current search term for "Load More"
 
-                        if (!response.ok) {
-                            throw new Error("Network response was not ok");
-                        }
+            // --- Function to fetch products ---
+            async function fetchProducts(sentence, offset, limit) { // Removed isNewSearch from here
+                loadingIndicator.style.display = "block";
+                // Always hide button while loading (whether new search or load more)
+                loadMoreBtn.style.display = "none";
 
-                        const products = await response.json();
-                        displayProducts(products);
-                        document.getElementById("loading").style.display =
-                            "none";
-                    } catch (error) {
-                        console.error("Error:", error);
-                        alert("An error occurred while fetching products.");
-                        document.getElementById("loading").style.display =
-                            "none";
+                const apiUrl = `http://localhost:8000/get?offset=${offset}&limit=${limit}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ sentence: sentence }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Network response was not ok (${response.status})`);
                     }
-                });
 
+                    const products = await response.json();
+
+                    // Check if it was the first load (offset 0) and no products came back
+                    if (offset === 0 && products.length === 0) {
+                         resultsContainer.innerHTML = '<p class="text-muted text-center col-12">No products found matching your search.</p>';
+                    } else {
+                        displayProducts(products); // Just display (append)
+                    }
+
+                    // Update offset for the next potential "Load More" click
+                    currentOffset = offset + products.length;
+
+                    // Decide whether to show the "Load More" button
+                    if (products.length === limit) {
+                        loadMoreBtn.style.display = "block"; // More might be available
+                    } else {
+                        loadMoreBtn.style.display = "none"; // Reached the end
+                    }
+
+                } catch (error) {
+                    console.error("Error fetching products:", error);
+                    // Display error message in the results area, potentially clearing previous errors if any
+                    resultsContainer.innerHTML = `<p class="text-danger text-center col-12">An error occurred: ${error.message}. Please try again.</p>`;
+                    loadMoreBtn.style.display = "none"; // Hide on error
+                } finally {
+                    loadingIndicator.style.display = "none";
+                }
+            }
+
+            // --- Function to display products (now always appends) ---
             function displayProducts(products) {
-                const resultsContainer = document.getElementById("results");
-                resultsContainer.innerHTML = ""; // Clear previous results
+                // No longer clears here - clearing happens on search button click
 
                 products.forEach((product) => {
+                    const col = document.createElement("div");
+                    col.classList.add("col");
+
                     const card = document.createElement("div");
-                    card.classList.add("product-card");
+                    card.classList.add("card", "h-100"); // Use h-100 for equal height cards
 
                     // Product image
                     const img = document.createElement("img");
-                    img.src = product.image_url;
+                    img.src = product.image_url || 'placeholder.png'; // Basic placeholder fallback
                     img.alt = product.name;
+                    img.classList.add("card-img-top");
+                    img.onerror = function() { this.src='placeholder.png'; }; // Handle broken images
                     card.appendChild(img);
 
+                     // Card Body
+                    const cardBody = document.createElement("div");
+                    cardBody.classList.add("card-body", "d-flex", "flex-column"); // Flex column for layout
+
                     // Product name
-                    const name = document.createElement("div");
-                    name.classList.add("product-name");
-                    name.textContent = product.name;
-                    card.appendChild(name);
+                    const name = document.createElement("h5");
+                    name.classList.add("card-title");
+                    name.textContent = product.name || "No Name Available";
+                    cardBody.appendChild(name);
 
-                    // Product price
-                    const price = document.createElement("div");
-                    price.classList.add("product-price");
-                    // Format price; assumes product.price_eur is a number.
-                    price.textContent = `€${product.price_eur}`;
-                    card.appendChild(price);
+                    // Product price - Added mt-auto to push price to bottom
+                    const price = document.createElement("p");
+                    price.classList.add("card-text", "fw-bold", "mt-auto"); // Use fw-bold and mt-auto
+                    // Format price; assumes product.price_eur is a number. Handle potential null/undefined
+                    const priceValue = typeof product.price_eur === 'number' ? product.price_eur.toFixed(2) : 'N/A';
+                    price.textContent = `€${priceValue}`;
+                    cardBody.appendChild(price);
 
-                    resultsContainer.appendChild(card);
+                    card.appendChild(cardBody);
+                    col.appendChild(card);
+                    resultsContainer.appendChild(col); // Append the column to the results container
                 });
             }
+
+            // --- Event Listener for Search Form ---
+            searchForm.addEventListener("submit", async function (e) {
+                e.preventDefault();
+
+                // --- CLEAR RESULTS IMMEDIATELY ON SEARCH CLICK ---
+                resultsContainer.innerHTML = '';
+                // --- Hide Load More button immediately ---
+                loadMoreBtn.style.display = 'none';
+                // ----------------------------------------------------
+
+                currentSentence = sentenceInput.value.trim();
+                if (!currentSentence) {
+                    resultsContainer.innerHTML = '<p class="text-muted text-center col-12">Please enter a search term.</p>';
+                    return; // Don't search if input is empty
+                }
+
+                currentOffset = 0; // Reset offset for a new search
+                fetchProducts(currentSentence, currentOffset, productsPerPage); // Fetch first page
+            });
+
+            // --- Event Listener for "Load More" Button ---
+            loadMoreBtn.addEventListener("click", async function () {
+                 if (!currentSentence) return; // Safety check
+                // Fetch next page of products, using the *current* offset
+                fetchProducts(currentSentence, currentOffset, productsPerPage); // Fetch next page
+            });
+
         </script>
 
-    </body>
-    <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 20px;
-            }
-
-            .container {
-                max-width: 800px;
-                margin: 0 auto;
-            }
-
-            #searchForm {
-                margin-bottom: 20px;
-            }
-
-            input[type="text"] {
-                width: 80%;
-                padding: 10px;
-                margin-right: 10px;
-                font-size: 16px;
-            }
-
-            button {
-                padding: 10px 15px;
-                font-size: 16px;
-                cursor: pointer;
-            }
-
-            #results {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 20px;
-            }
-
-            .product-card img {
-                max-width: 100%;
-                height: auto;
+         <style>
+            /* Minimal styling - Bootstrap handles most */
+            .card-img-top {
+                width: 100%;
+                height: 200px; /* Fixed height for images */
+                object-fit: cover; /* Scale image nicely */
                 border-bottom: 1px solid #ddd;
-                margin-bottom: 10px;
+            }
+             /* Ensure card bodies try to take up space */
+            .card-body {
+                flex-grow: 1;
             }
         </style>
+    </body>
 </html>

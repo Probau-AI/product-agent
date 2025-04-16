@@ -1,95 +1,71 @@
 import asyncio
-import os
-import re
-
-import aiohttp
-from bs4 import BeautifulSoup
-from openai import OpenAI
-from dotenv import load_dotenv
+import decimal
 import json
-import requests
+import re
+from decimal import Decimal
 from urllib.parse import quote
 
-from pydantic import BaseModel
-
-from constants import CATEGORY_TO_ID, EXTENSIONS, BASE_URL, HEADERS
-from filters import Filters
-
-
-load_dotenv()
-
-
-client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key=os.getenv("OPENROUTER_KEY"),
-)
-
-
-def get_filters_from_sentence(sentence: str) -> Filters:
-    completion = client.beta.chat.completions.parse(
-        model="google/gemini-flash-1.5",
-        messages=[
-            {
-                "role": "system",
-                "content": "Extract parameters from the users sentence. Convert units to cm. integers and put into output. Leave fields as None if not specified"
-            },
-            {"role": "user", "content": sentence},
-        ],
-        response_format=Filters,
-    )
-
-    return completion.choices[0].message.parsed
-
-
-class Dimensions(BaseModel):
-    width: int
-    height: int
-    depth: int
-
-
-class Product(BaseModel):
-    name: str
-    image_url: str
-    price_eur: float
-    product_url: str
-    dimensions: Dimensions | None = None
+import aiohttp
+import requests
+from bs4 import BeautifulSoup
+from app.constants import CATEGORY_TO_ID, BASE_URL, HEADERS, PRODUCT_SEARCH_HASH, CATEGORY_SEARCH_HASH
+from app.models import Filters, Product, Dimensions
 
 
 async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -> list[Product]:
-    variables = {
-      "urlParams": filters.to_query_params(),
-      "id": CATEGORY_TO_ID["sofa-couch"],
-      "locale": "de_DE",
-      "first": limit,
-      "offset": offset,
-      "format": "WEBP",
-      "userIP": "91.247.57.116",
-      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-      "thirdPartyClientId": "513f27b4-8ee9-4575-9be6-73fde4f39cd8",
-      "thirdPartySessionId": "3",
-      "backend": "ThirdParty"
-    }
-
-    compact_variables = json.dumps(variables, separators=(',', ':'))
-    compact_extensions = json.dumps(EXTENSIONS, separators=(',', ':'))
-
-    url = f"{BASE_URL}/graphql?extensions={quote(compact_extensions)}&variables={quote(compact_variables)}"
+    data = _prepare_request_data(filters, limit, offset)
+    url = f"{BASE_URL}/graphql?extensions={quote(data['extensions'])}&variables={quote(data['variables'])}"
 
     response = requests.get(url, headers=HEADERS)
-
-    products = await _parse_response_data(response.json())
+    products = await _parse_response_data(response.json(), filters)
 
     return products
 
 
-async def _parse_response_data(data) -> list[Product]:
-    products = []
+def _prepare_request_data(filters: Filters, limit: int, offset: int) -> dict:
+    variables = {
+      "urlParams": filters.to_query_params(),
+      "locale": "de_DE",
+      "first": limit,
+      "offset": offset,
+      "format": "WEBP",
+    }
 
-    for product in data["data"]["categories"][0]["categoryArticles"]["articles"]:
+    if filters.is_product_search:
+        variables["query"] = filters.product_name
+
+    if filters.is_category_search:
+        variables["id"] = CATEGORY_TO_ID["sofa-couch"]
+
+    extensions = {
+        "persistedQuery": {
+            "version": 1,
+            "sha256Hash": PRODUCT_SEARCH_HASH if filters.is_product_search else CATEGORY_SEARCH_HASH
+        }
+    }
+
+    compact_variables = json.dumps(variables, separators=(',', ':'))
+    compact_extensions = json.dumps(extensions, separators=(',', ':'))
+
+    return {
+        "variables": compact_variables,
+        "extensions": compact_extensions,
+    }
+
+
+async def _parse_response_data(data, filters: Filters) -> list[Product]:
+    products = []
+    data = data["data"]["categories"]
+
+    product_list = data["articles"] if filters.is_product_search else data[0]["categoryArticles"]["articles"]
+
+    for product in product_list:
+        price = Decimal(product["prices"]["regular"]["value"]) / Decimal(100)
+
         product_obj = Product(
             name=product["name"],
             image_url=product["images"][0]["path"],
-            price_eur=product["prices"]["regular"]["value"] * 0.01,
+            price_eur=float(price),
             product_url=BASE_URL + "/" + product["url"],
         )
         products.append(product_obj)
@@ -110,6 +86,9 @@ async def set_dimension(product: Product):
 
 
 def extract_dimensions(html_content):
+    """
+    Extracts width, height and depth from the HTML content of home24 product detail page.
+    """
     soup = BeautifulSoup(html_content, 'html.parser')
     dimensions = {}
 

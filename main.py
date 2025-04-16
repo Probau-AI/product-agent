@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import Product, get_filters_from_sentence, get_product_list
+from app.ai import get_filters_from_sentence
+from app.extractions import Product, get_product_list
 
 app = FastAPI()
 
@@ -21,10 +22,8 @@ class Payload(BaseModel):
 
 
 @app.post("/get")
-async def read_root(data: Payload) -> list[Product]:
-    """
-    Get a list of products based on the filters extracted from the sentence.
-    """
+async def extract_products_from_home24(data: Payload, offset: int=0, limit: int=10) -> list[Product]:
     filters = get_filters_from_sentence(data.sentence)
+    print("query: ", filters.to_query_params())
     products = await get_product_list(filters)
     return products

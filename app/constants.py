@@ -23,11 +23,7 @@ CATEGORY_TO_ID = {
     "innenleuchte": "177561"
 }
 
-EXTENSIONS = {
-    "persistedQuery": {
-        "version": 1,
-        "sha256Hash": "80021581f9cced0ece4065bd9c99d50a4e8cdfe749ab57cea87ef0a549bfb7b7"
-    }
-}
-
 BASE_URL = "https://www.home24.de"
+
+CATEGORY_SEARCH_HASH = "80021581f9cced0ece4065bd9c99d50a4e8cdfe749ab57cea87ef0a549bfb7b7"
+PRODUCT_SEARCH_HASH = "49a969c017878e1a0bf0c6db3b8cc470fe096fb20dbe8dbba75130de498bfb94"
