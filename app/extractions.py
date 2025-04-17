@@ -141,8 +141,8 @@ def extract_dimensions(html_content):
                         numeric_value = int(match.group(0))
                         dimensions[label_map[label_text]] = numeric_value
                     except ValueError:
-                        print(f"Warning: Could not convert extracted digits '{match.group(0)}' from '{value_text}' to integer for label '{label_text}'. Skipping.")
+                        logger.warning(f"Warning: Could not convert extracted digits '{match.group(0)}' from '{value_text}' to integer for label '{label_text}'. Skipping.")
                 else:
-                     print(f"Warning: Could not find numeric value in '{value_text}' for label '{label_text}'. Skipping.")
+                     logger.warning(f"Warning: Could not find numeric value in '{value_text}' for label '{label_text}'. Skipping.")
 
     return dimensions
