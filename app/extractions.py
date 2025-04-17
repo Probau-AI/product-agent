@@ -90,7 +90,7 @@ async def set_dimension(product: Product):
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.get(product.product_url) as response:
             if response.status != 200:
-                logger.error("Request to product detail failed. status: %s, url: %s", response.status, product.product_url)
+                logger.error("Request to product detail failed. status: %s, url: %s, body: %s", response.status, product.product_url, await response.read())
                 return
 
             html = await response.read()
