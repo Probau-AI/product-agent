@@ -1,6 +1,6 @@
 import asyncio
-import decimal
 import json
+import logging
 import re
 from decimal import Decimal
 from urllib.parse import quote
@@ -8,8 +8,13 @@ from urllib.parse import quote
 import aiohttp
 import requests
 from bs4 import BeautifulSoup
+from pydantic_core import ValidationError
+
 from app.constants import CATEGORY_TO_ID, BASE_URL, HEADERS, PRODUCT_SEARCH_HASH, CATEGORY_SEARCH_HASH
 from app.models import Filters, Product, Dimensions
+
+
+logger = logging.getLogger(__name__)
 
 
 async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -> list[Product]:
@@ -18,8 +23,6 @@ async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -
 
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
-        print(data["extensions"])
-        print(data["variables"])
         raise Exception(f"Error: {response.status_code} - {response.text}")
 
     products = await _parse_response_data(response.json(), filters)
@@ -86,10 +89,19 @@ async def _parse_response_data(data, filters: Filters) -> list[Product]:
 async def set_dimension(product: Product):
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.get(product.product_url) as response:
+            if response.status != 200:
+                logger.error("Request to product detail failed. status: %s, url: %s", response.status, product.product_url)
+                return
+
             html = await response.read()
 
     data = extract_dimensions(html)
-    product.dimensions = Dimensions(**data)
+
+    try:
+        product.dimensions = Dimensions(**data)
+    except ValidationError:
+        logger.error("Could not set dimensions. data: %s, url: %s", data, product.product_url)
+        return
 
 
 def extract_dimensions(html_content):
