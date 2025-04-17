@@ -1,6 +1,8 @@
+from enum import Enum
+from typing import Literal
 from urllib.parse import quote_plus
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Dimensions(BaseModel):
@@ -15,6 +17,14 @@ class Product(BaseModel):
     price_eur: float
     product_url: str
     dimensions: Dimensions | None = None
+
+
+rating_query = {
+    2: "★★+und+mehr",
+    3: "★★★+und+mehr",
+    4: "★★★★+und+mehr",
+    5: "★★★★★"
+}
 
 
 class Filters(BaseModel):
@@ -33,13 +43,22 @@ class Filters(BaseModel):
 
     product_name: str | None = None
 
+    material: str | None = Field(default=None, json_schema_extra={'enum': ["bamboo", "engineeredWood", "metal", "naturalfiber", "other", "plastic", "realleather", "solidwood", "syntheticFur", "syntheticleather", "textile", "woodsemisolid"]})
+    shape: str | None = Field(default=None, json_schema_extra={'enum': ["lshaped", "rectangular", "square"]})
+    style: str | None = Field(default=None, json_schema_extra={'enum': ["industrial", "modernStyle", "newCountry", "scandinavian"]})
+    textile: str | None = Field(default=None, json_schema_extra={'enum': ["blendedfabric", "boucle", "chenille", "chenillefabric", "cord", "cotton", "fakeFur", "felt", "flannel", "flatfabric", "fleece", "jeans", "jersey", "linen", "microfiber", "netfabric", "nylon", "polyamid", "polyester", "satin", "syntethicLeather", "teddyFabric", "terrycloth", "textile2", "velvet", "wool"]})
+    pattern: str | None = Field(default=None, json_schema_extra={'enum': ["flowered", "motif", "unicolored", "vintage", "woodLook"]})
+    storage_space_beds: str | None = Field(default=None, json_schema_extra={'enum': ["bedBoxBothSides", "bedBoxLeftSide", "bedBoxRightSide", "noBedBox", "withBedBox"]})
+
+    average_rating: int | None = None
+    """an integer with minimum 2 and maximum 5"""
+
     prices_low_to_high: bool = False
     prices_high_to_low: bool = False
     sort_by_popularity: bool = False
     sort_by_discount: bool = False
     sort_by_rating: bool = False
     new_ones_first: bool = False
-
 
     color: str | None = None
 
@@ -77,6 +96,22 @@ class Filters(BaseModel):
             params += f"price.min={self.price_min}&"
         if self.price_max:
             params += f"price.max={self.price_max}&"
+
+        if self.material:
+            params += f"material={self.material}&"
+        if self.shape:
+            params += f"shape={self.shape}&"
+        if self.style:
+            params += f"styleFilter={self.style}&"
+        if self.textile:
+            params += f"textile={self.textile}&"
+        if self.pattern:
+            params += f"pattern={self.pattern}&"
+        if self.storage_space_beds:
+            params += f"storageSpaceBeds={self.storage_space_beds}&"
+
+        if self.average_rating:
+            params += f"averageRating={rating_query[self.average_rating]}&"
 
         if self.prices_low_to_high:
             params += f"order=price_asc&"

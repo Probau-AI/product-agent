@@ -18,7 +18,9 @@ client = OpenAI(
 PROMPT = """
 Extract parameters from the users sentence. Convert units to cm. integers and put into output. 
 Leave fields as None if not specified. If user includes some product name, brand also include category in product_name
-Like if it asks 'Give me sofas names JENNY', then product_name must be 'sofas JENNY'
+Like if it asks 'Give me sofas names JENNY', then product_name must be 'sofas JENNY'.
+As for material, shape, style, textile, delivery and pattern please look into Enums and match values to those
+enums. If color provided pattern must stay None
 """
 
 
@@ -32,7 +34,12 @@ def get_filters_from_sentence(sentence: str) -> Filters:
         response_format=Filters,
     )
 
-    return completion.choices[0].message.parsed
+    message = completion.choices[0].message
+    if message.refusal:
+        raise ValueError(message.refusal)
+
+    return message.parsed
+
 
 
 if __name__ == '__main__':

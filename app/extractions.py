@@ -17,6 +17,11 @@ async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -
     url = f"{BASE_URL}/graphql?extensions={quote(data['extensions'])}&variables={quote(data['variables'])}"
 
     response = requests.get(url, headers=HEADERS)
+    if response.status_code != 200:
+        print(data["extensions"])
+        print(data["variables"])
+        raise Exception(f"Error: {response.status_code} - {response.text}")
+
     products = await _parse_response_data(response.json(), filters)
 
     return products
@@ -36,6 +41,7 @@ def _prepare_request_data(filters: Filters, limit: int, offset: int) -> dict:
 
     if filters.is_category_search:
         variables["id"] = CATEGORY_TO_ID["sofa-couch"]
+        variables["backend"] = "ThirdParty"
 
     extensions = {
         "persistedQuery": {
@@ -44,6 +50,7 @@ def _prepare_request_data(filters: Filters, limit: int, offset: int) -> dict:
         }
     }
 
+    # Compact the JSON data to remove unnecessary whitespace
     compact_variables = json.dumps(variables, separators=(',', ':'))
     compact_extensions = json.dumps(extensions, separators=(',', ':'))
 
