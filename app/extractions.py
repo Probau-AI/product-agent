@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 import re
 from decimal import Decimal
 from urllib.parse import quote
@@ -12,6 +11,7 @@ from bs4 import BeautifulSoup
 from pydantic_core import ValidationError
 
 from app.constants import CATEGORY_TO_ID, BASE_URL, HEADERS, PRODUCT_SEARCH_HASH, CATEGORY_SEARCH_HASH
+from app.floors import floors
 from app.models import Filters, Product, Dimensions
 
 
@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -> list[Product]:
+    if filters.is_floors_search:
+        return floors
+
     data = _prepare_request_data(filters, limit, offset)
     url = f"{BASE_URL}/graphql?extensions={quote(data['extensions'])}&variables={quote(data['variables'])}"
 
@@ -78,17 +81,19 @@ async def _parse_response_data(data, filters: Filters) -> list[Product]:
             image_url=product["images"][0]["path"],
             price_eur=float(price),
             product_url=BASE_URL + "/" + product["url"],
+            brand=product["brand"]["name"],
+            rating=product["ratings"]["average"]
         )
         products.append(product_obj)
 
-    await asyncio.gather(*[set_dimension(product) for product in products])
+    await asyncio.gather(*[set_extra_data(product) for product in products])
 
     return products
 
 
 
-async def set_dimension(product: Product):
-    async with aiohttp.ClientSession(headers=HEADERS, proxy=os.getenv("PROXY")) as session:
+async def set_extra_data(product: Product):
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.get(product.product_url) as response:
             if response.status != 200:
                 logger.error("Request to product detail failed. status: %s, url: %s, body: %s", response.status, product.product_url, await response.read())
@@ -96,54 +101,168 @@ async def set_dimension(product: Product):
 
             html = await response.read()
 
-    data = extract_dimensions(html)
+    soup = BeautifulSoup(html, 'html.parser')
 
+    dimension_dict = extract_dimensions(soup)
     try:
-        product.dimensions = Dimensions(**data)
+        product.dimensions = Dimensions(**dimension_dict)
     except ValidationError:
-        logger.error("Could not set dimensions. data: %s, url: %s", data, product.product_url)
+        logger.error("Could not set dimensions. dimension_dict: %s, url: %s", dimension_dict, product.product_url)
         return
+    product.weight = dimension_dict["weight"]
+
+    color_and_material_dict = extract_color_and_material(soup)
+    product.color = color_and_material_dict["color"]
+    product.material = color_and_material_dict["material"]
+
+    category_name = extract_category_name(soup)
+    product.category = category_name
+
+    delivery_time = extract_delivery_time(soup)
+    product.delivery_time = delivery_time
+
+    product.description = extract_description(soup)
 
 
-def extract_dimensions(html_content):
-    """
-    Extracts width, height and depth from the HTML content of home24 product detail page.
-    """
-    soup = BeautifulSoup(html_content, 'html.parser')
-    dimensions = {}
+def extract_dimensions(soup):
+    main_section = soup.find('div', attrs={'data-section-name': "product_dimensions"})
 
-    # Define the mapping from German labels to English keys
-    label_map = {
-        "Tiefe": "depth",
-        "Höhe": "height",
-        "Breite": "width"
+    data = {
+        "width": None,
+        "height": None,
+        "depth": None,
+        "weight": None
     }
 
-    # Find all the divs containing individual dimension info
-    dimension_blocks = soup.find_all('div', class_='e1kn6ntn3')
+    pattern = {
+        "Tiefe": "depth",
+        "Höhe": "height",
+        "Breite": "width",
+        "Gewicht": "weight"
+    }
 
-    if not dimension_blocks:
-         dimension_blocks = soup.find_all('div', class_='emotion-cache-h7y6ra')
+    if not main_section:
+        return data
 
-    for block in dimension_blocks:
-        label_div = block.find('div', class_='e1kn6ntn4')
-        value_div = block.find('div', class_='e1kn6ntn5')
+    for label, key in pattern.items():
+        element = main_section.find('div', string=label)
 
-        if label_div and value_div:
-            label_text = label_div.get_text(strip=True)
-            value_text = value_div.get_text(strip=True) # e.g., "173 cm"
+        if not element:
+            continue
 
-            if label_text in label_map:
-                # --- Modification Start ---
-                # Extract only the digits using regex
-                match = re.search(r'\d+', value_text)
-                if match:
-                    try:
-                        numeric_value = int(match.group(0))
-                        dimensions[label_map[label_text]] = numeric_value
-                    except ValueError:
-                        logger.warning(f"Warning: Could not convert extracted digits '{match.group(0)}' from '{value_text}' to integer for label '{label_text}'. Skipping.")
-                else:
-                     logger.warning(f"Warning: Could not find numeric value in '{value_text}' for label '{label_text}'. Skipping.")
+        second_element = element.parent.contents[1]
+        if not second_element:
+            continue
 
-    return dimensions
+        text = second_element.get_text(strip=True)
+        number = re.search(r'\d+', text)
+
+        if not number:
+            continue
+
+        data[key] = int(number.group(0))
+
+    return data
+
+
+def extract_color_and_material(soup):
+    data = {
+        "material": None,
+        "color": None
+    }
+
+
+    main_section = soup.find('section', attrs={'data-testid': 'section-content-product_details'})
+    if not main_section:
+        return data
+
+    material_header = main_section.find('span', string=re.compile(r'Material'))
+
+    if material_header:
+        text = material_header.get_text(strip=True)
+        data["material"] = text.split(":")[1].strip()
+
+    color_header = main_section.find('div', string='Farbe')
+    if color_header:
+        parent = color_header.parent
+        ul = parent.find('ul')
+        if ul:
+            span = ul.find('span')
+            if span:
+                data["color"] = span.get_text(strip=True)
+
+    return data
+
+
+def extract_category_name(soup):
+    main_section = soup.find('ol', attrs={'class': 'emotion-cache-12rx5a3'})
+
+    if not main_section:
+        return None
+
+    last_li = main_section.contents[-1]
+
+    if not last_li:
+        return None
+
+    span = last_li.find('span')
+    if not span:
+        return None
+
+    return span.get_text(strip=True)
+
+
+def extract_delivery_time(soup):
+    main_section = soup.find('section', attrs={'data-testid': 'delivery-time-notice'})
+
+    if not main_section:
+        return None
+
+    delivery_div = main_section.find(lambda tag: tag.name == 'div' and re.compile(r'Lieferung').search(tag.get_text()))
+
+    if not delivery_div:
+        return None
+
+    text = delivery_div.get_text(strip=True)
+    delivery_time = text.split(":")[1].strip()
+    return delivery_time
+
+def extract_description(soup):
+    main_section = soup.find('div', attrs={'id': "accordion-section-region-product_description"})
+    if not main_section:
+        return None
+
+    return main_section.get_text()
+
+
+if __name__ == '__main__':
+    url = "https://www.home24.de/produkt/sofa-jenny-3-sitzplaetze-beige-chenille-90-x-73-x-178-cm"
+
+    # async def main():
+    #     async with aiohttp.ClientSession(headers=HEADERS) as session:
+    #         async with session.get(url) as response:
+    #             if response.status != 200:
+    #                 print("error", response.status)
+    #                 html = await response.read()
+    #
+    #             else:
+    #                 print("success")
+    #                 html = await response.read()
+    #
+    #     soup = BeautifulSoup(html, 'html.parser')
+    #
+    #     print(extract_description(soup))
+
+    async def main():
+        filters = Filters(sort_by_popularity=True)
+
+        print("fetching and extracting...")
+        products = await get_product_list(filters=filters)
+
+        print("done")
+        import pandas as pd
+
+        df = pd.DataFrame([p.__dict__ for p in products])
+        print(df.to_markdown())
+
+    asyncio.run(main())

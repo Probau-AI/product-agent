@@ -20,7 +20,8 @@ Extract parameters from the users sentence. Convert units to cm. integers and pu
 Leave fields as None if not specified. If user includes some product name, brand also include category in product_name
 Like if it asks 'Give me sofas names JENNY', then product_name must be 'sofas JENNY'.
 As for material, shape, style, textile, delivery and pattern please look into Enums and match values to those
-enums. If color provided pattern must stay None
+enums. If color provided pattern must stay None.
+If user asks for a floor set is_floors_search to true
 """
 
 

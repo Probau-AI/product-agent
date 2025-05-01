@@ -17,6 +17,14 @@ class Product(BaseModel):
     price_eur: float
     product_url: str
     dimensions: Dimensions | None = None
+    weight: float | None = None
+    color: str | None = None
+    material: str | None = None
+    category: str | None = None
+    brand: str
+    rating: float
+    delivery_time: str | None = None
+    description: str | None = None
 
 
 rating_query = {
@@ -59,6 +67,8 @@ class Filters(BaseModel):
     sort_by_discount: bool = False
     sort_by_rating: bool = False
     new_ones_first: bool = False
+
+    is_floors_search: bool = False
 
     color: str | None = None
 
