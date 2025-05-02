@@ -6,9 +6,9 @@ floors = [
         price_eur=12.95,
         product_url="https://www.hornbach.de/p/laminat-8-0-petterson-eiche-natur/6087617/",
         dimensions=Dimensions(
-            height=1,
-            width=244,
-            depth=180
+            height=0.8,
+            width=24.4,
+            depth=138.0
         ),
         material="wood",
         brand="Kronotex",
@@ -21,7 +21,7 @@ floors = [
         image_url="https://media.hornbach.de/hb/packshot/as.47351907.jpg?dvid=8",
         price_eur=10.95,
         product_url="https://www.hornbach.de/p/skandor-laminat-8-0-ahmara-oak/10132552/",
-        dimensions=Dimensions(height=1383, width=193, depth=8),
+        dimensions=Dimensions(height=0.8, width=19.3, depth=138.3),
         weight=12.63,
         color="Oak",
         material="HDF Quellungsarm (Trägerplatte), Wood",
@@ -36,7 +36,7 @@ floors = [
         image_url="https://media.hornbach.de/hb/packshot/as.46853066.jpg?dvid=8",  # Add image URL if available
         price_eur=9.95,  # per m2
         product_url="https://www.hornbach.de/p/skandor-laminat-72-easily-ash/6395253/",
-        dimensions=Dimensions(height=1383, width=193, depth=9),
+        dimensions=Dimensions(height=0.9, width=19.3, depth=138.3),
         weight=14.54,  # per pack
         color="Esche (Light Ash)",
         material="HDF (High-Density Fiberboard), Wood",
@@ -51,7 +51,7 @@ floors = [
         image_url="https://media.hornbach.de/hb/packshot/as.46056854.jpg?dvid=8",
         price_eur=10.95,
         product_url="https://www.hornbach.de/p/skandor-laminat-midday-oak-landhausdiele-1380-x-244-x-8-mm/5901385/",
-        dimensions=Dimensions(height=1380, width=244, depth=8),
+        dimensions=Dimensions(height=0.8, width=24.4, depth=138.0),
         weight=None, # Weight is not available
         color="Midday Oak",
         material="HDF, Hartholz, Massivholz, Stahl",
@@ -66,7 +66,7 @@ floors = [
         image_url="https://media.hornbach.de/hb/packshot/as.46853066.jpg?dvid=8",
         price_eur=9.95,
         product_url="https://www.hornbach.de/p/skandor-laminat-72-easily-ash/6395253/",
-        dimensions=Dimensions(height=1292, width=192, depth=7),
+        dimensions=Dimensions(height=0.9, width=19.3, depth=138.3),
         weight=None,
         color="Easily Ash",
         material="HDF",

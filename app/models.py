@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class Dimensions(BaseModel):
-    width: int
-    height: int
-    depth: int
+    width: float | int
+    height: float | int
+    depth: float | int
 
 
 class Product(BaseModel):
