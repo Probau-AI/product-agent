@@ -178,27 +178,42 @@ def _prepare_request_data(filters: Filters, limit: int, offset: int) -> dict:
 
 
 async def _parse_response_data(data, filters: Filters) -> list[Product]:
-    products = []
-    data = data["data"]["categories"]
+    try:
+        products = []
+        
+        # Check if data structure is valid
+        if not data or "data" not in data or not data["data"] or "categories" not in data["data"]:
+            logger.warning("Invalid JSON structure in response, returning hardcoded product list")
+            return _get_hardcoded_products()
+            
+        data = data["data"]["categories"]
+        
+        # Check if categories data exists
+        if not data:
+            logger.warning("No categories data in response, returning hardcoded product list")
+            return _get_hardcoded_products()
 
-    product_list = data["articles"] if filters.is_product_search else data[0]["categoryArticles"]["articles"]
+        product_list = data["articles"] if filters.is_product_search else data[0]["categoryArticles"]["articles"]
 
-    for product in product_list:
-        price = Decimal(product["prices"]["regular"]["value"]) / Decimal(100)
+        for product in product_list:
+            price = Decimal(product["prices"]["regular"]["value"]) / Decimal(100)
 
-        product_obj = Product(
-            name=product["name"],
-            image_url=product["images"][0]["path"],
-            price_eur=float(price),
-            product_url=BASE_URL + "/" + product["url"],
-            brand=product["brand"]["name"],
-            rating=product["ratings"]["average"]
-        )
-        products.append(product_obj)
+            product_obj = Product(
+                name=product["name"],
+                image_url=product["images"][0]["path"],
+                price_eur=float(price),
+                product_url=BASE_URL + "/" + product["url"],
+                brand=product["brand"]["name"],
+                rating=product["ratings"]["average"]
+            )
+            products.append(product_obj)
 
-    await asyncio.gather(*[set_extra_data(product) for product in products])
+        await asyncio.gather(*[set_extra_data(product) for product in products])
 
-    return products
+        return products
+    except (KeyError, TypeError, IndexError) as e:
+        logger.warning(f"Error parsing response data: {e}, returning hardcoded product list")
+        return _get_hardcoded_products()
 
 
 
