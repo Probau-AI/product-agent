@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -11,7 +12,7 @@ from bs4 import BeautifulSoup
 from pydantic_core import ValidationError
 from playwright.async_api import async_playwright
 
-from app.constants import CATEGORY_TO_ID, BASE_URL, HEADERS, PRODUCT_SEARCH_HASH, CATEGORY_SEARCH_HASH
+from app.constants import CATEGORY_TO_ID, BASE_URL, HEADERS, PRODUCT_SEARCH_HASH, CATEGORY_SEARCH_HASH, SEARCH_SUGGESTIONS_HASH
 from app.floors import floors
 from app.models import Filters, Product, Dimensions
 
@@ -145,27 +146,50 @@ async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -
 
 
 def _prepare_request_data(filters: Filters, limit: int, offset: int) -> dict:
-    variables = {
-      "urlParams": filters.to_query_params(),
-      "locale": "de_DE",
-      "first": limit,
-      "offset": offset,
-      "format": "WEBP",
-    }
-
-    if filters.is_product_search:
-        variables["query"] = filters.product_name
-
-    if filters.is_category_search:
-        variables["id"] = CATEGORY_TO_ID["sofa-couch"]
-        variables["backend"] = "ThirdParty"
-
-    extensions = {
-        "persistedQuery": {
-            "version": 1,
-            "sha256Hash": PRODUCT_SEARCH_HASH if filters.is_product_search else CATEGORY_SEARCH_HASH
+    # Use SearchSuggestionsV2 when we have both product_name and color
+    if filters.is_product_search and filters.color:
+        # Combine search terms for SearchSuggestionsV2
+        search_prefix = f"{filters.color} {filters.product_name}"
+        
+        variables = {
+            "prefix": search_prefix,
+            "locale": "de_DE",
+            "withProductSuggestions": True,
+            "userIP": "127.0.0.1",  # Placeholder IP
+            "userAgent": HEADERS.get('User-Agent', 'Mozilla/5.0'),
+            "thirdPartyClientId": str(uuid.uuid4()),
+            "thirdPartySessionId": "1"
         }
-    }
+        
+        extensions = {
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": SEARCH_SUGGESTIONS_HASH
+            }
+        }
+    else:
+        # Use original logic for regular searches
+        variables = {
+          "urlParams": filters.to_query_params(),
+          "locale": "de_DE",
+          "first": limit,
+          "offset": offset,
+          "format": "WEBP",
+        }
+
+        if filters.is_product_search:
+            variables["query"] = filters.product_name
+
+        if filters.is_category_search:
+            variables["id"] = CATEGORY_TO_ID["sofa-couch"]
+            variables["backend"] = "ThirdParty"
+
+        extensions = {
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": PRODUCT_SEARCH_HASH if filters.is_product_search else CATEGORY_SEARCH_HASH
+            }
+        }
 
     # Compact the JSON data to remove unnecessary whitespace
     compact_variables = json.dumps(variables, separators=(',', ':'))
@@ -181,36 +205,68 @@ async def _parse_response_data(data, filters: Filters) -> list[Product]:
     try:
         products = []
 
-        # Check if data structure is valid
-        if not data or "data" not in data or not data["data"] or "categories" not in data["data"]:
-            logger.warning("Invalid JSON structure in response, returning hardcoded product list")
-            if data is not None:
-                logger.warning("Example of invalid data: %s", data)
-            return _get_hardcoded_products()
+        # Handle SearchSuggestionsV2 response format
+        if filters.is_product_search and filters.color:
+            # SearchSuggestionsV2 has different structure
+            if not data or "data" not in data:
+                logger.warning("Invalid SearchSuggestionsV2 structure, returning hardcoded product list")
+                if data is not None:
+                    logger.warning("SearchSuggestionsV2 data: %s", data)
+                return _get_hardcoded_products()
+            
+            # Check if we have suggestions in the response
+            search_data = data["data"]
+            if "suggestions" in search_data and search_data["suggestions"]:
+                product_list = search_data["suggestions"]
+            else:
+                logger.warning("No suggestions in SearchSuggestionsV2 response, returning hardcoded product list")
+                return _get_hardcoded_products()
+        else:
+            # Handle regular search response format
+            if not data or "data" not in data or not data["data"] or "categories" not in data["data"]:
+                logger.warning("Invalid JSON structure in response, returning hardcoded product list")
+                if data is not None:
+                    logger.warning("Example of invalid data: %s", data)
+                return _get_hardcoded_products()
 
-        data = data["data"]["categories"]
+            data = data["data"]["categories"]
 
-        # Check if categories data exists
-        if not data:
-            logger.warning("No categories data in response, returning hardcoded product list")
-            return _get_hardcoded_products()
+            # Check if categories data exists
+            if not data:
+                logger.warning("No categories data in response, returning hardcoded product list")
+                return _get_hardcoded_products()
 
-        product_list = data["articles"] if filters.is_product_search else data[0]["categoryArticles"]["articles"]
+            product_list = data["articles"] if filters.is_product_search else data[0]["categoryArticles"]["articles"]
 
         for product in product_list:
             price = Decimal(product["prices"]["regular"]["value"]) / Decimal(100)
 
-            product_obj = Product(
-                name=product["name"],
-                image_url=product["images"][0]["path"],
-                price_eur=float(price),
-                product_url=BASE_URL + "/" + product["url"],
-                brand=product["brand"]["name"],
-                rating=product["ratings"]["average"]
-            )
+            # Handle different response formats
+            if filters.is_product_search and filters.color:
+                # SearchSuggestionsV2 format
+                product_obj = Product(
+                    name=product["name"],
+                    image_url=product["productImage"],
+                    price_eur=float(price),
+                    product_url=product["url"],  # Already includes full URL
+                    brand="Unknown",  # Not available in suggestions
+                    rating=0.0  # Not available in suggestions
+                )
+            else:
+                # Regular search format
+                product_obj = Product(
+                    name=product["name"],
+                    image_url=product["images"][0]["path"],
+                    price_eur=float(price),
+                    product_url=BASE_URL + "/" + product["url"],
+                    brand=product["brand"]["name"],
+                    rating=product["ratings"]["average"]
+                )
             products.append(product_obj)
 
-        await asyncio.gather(*[set_extra_data(product) for product in products])
+        # Only call set_extra_data for regular searches, not SearchSuggestionsV2
+        if not (filters.is_product_search and filters.color):
+            await asyncio.gather(*[set_extra_data(product) for product in products])
 
         return products
     except (KeyError, TypeError, IndexError) as e:
