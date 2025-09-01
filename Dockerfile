@@ -5,6 +5,13 @@ EXPOSE 8000
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
+# install system dependencies for playwright
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # create app directory to work in
 WORKDIR /app
 
@@ -16,6 +23,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.10 /uv /uvx /bin/
 # reinstall packages during build every time code changes
 COPY uv.lock pyproject.toml ./
 RUN uv sync --frozen
+
+# install playwright browsers
+RUN uv run playwright install --with-deps chromium
 
 ENV PATH="/app/.venv/bin:$PATH"
 

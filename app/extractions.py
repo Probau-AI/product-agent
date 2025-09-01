@@ -9,6 +9,7 @@ import aiohttp
 import requests
 from bs4 import BeautifulSoup
 from pydantic_core import ValidationError
+from playwright.async_api import async_playwright
 
 from app.constants import CATEGORY_TO_ID, BASE_URL, HEADERS, PRODUCT_SEARCH_HASH, CATEGORY_SEARCH_HASH
 from app.floors import floors
@@ -25,11 +26,25 @@ async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -
     data = _prepare_request_data(filters, limit, offset)
     url = f"{BASE_URL}/graphql?extensions={quote(data['extensions'])}&variables={quote(data['variables'])}"
 
-    response = requests.get(url, headers=HEADERS)
-    if response.status_code != 200:
-        raise Exception(f"Error: {response.status_code} - {response.text}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page(locale="de-DE")
+        
+        # Set headers
+        await page.set_extra_http_headers(HEADERS)
+        
+        # Navigate to the URL and wait for network to be idle
+        response = await page.goto(url, wait_until="networkidle")
+        
+        if response.status != 200:
+            await browser.close()
+            raise Exception(f"Error: {response.status} - {response.status_text}")
+        
+        # Get the JSON response from the body
+        json_data = await response.json()
+        await browser.close()
 
-    products = await _parse_response_data(response.json(), filters)
+    products = await _parse_response_data(json_data, filters)
 
     return products
 
@@ -93,13 +108,24 @@ async def _parse_response_data(data, filters: Filters) -> list[Product]:
 
 
 async def set_extra_data(product: Product):
-    async with aiohttp.ClientSession(headers=HEADERS) as session:
-        async with session.get(product.product_url) as response:
-            if response.status != 200:
-                logger.error("Request to product detail failed. status: %s, url: %s, body: %s", response.status, product.product_url, await response.read())
-                return
-
-            html = await response.read()
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page(locale="de-DE")
+        
+        # Set headers
+        await page.set_extra_http_headers(HEADERS)
+        
+        # Navigate to the product URL
+        response = await page.goto(product.product_url, wait_until="networkidle")
+        
+        if response.status != 200:
+            logger.error("Request to product detail failed. status: %s, url: %s", response.status, product.product_url)
+            await browser.close()
+            return
+        
+        # Get the HTML content
+        html = await page.content()
+        await browser.close()
 
     soup = BeautifulSoup(html, 'html.parser')
 
