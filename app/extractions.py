@@ -111,17 +111,17 @@ async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page(locale="de-DE")
-        
+
         # Set headers
         await page.set_extra_http_headers(HEADERS)
-        
+
         # Navigate to the URL and wait for network to be idle
         response = await page.goto(url, wait_until="networkidle")
-        
+
         if response.status != 200:
             await browser.close()
             raise Exception(f"Error: {response.status} - {response.status_text}")
-        
+
         # Check if response contains blocked access or is not JSON
         try:
             response_text = await page.content()
@@ -129,14 +129,14 @@ async def get_product_list(filters: Filters, limit: int = 10, offset: int = 0) -
                 await browser.close()
                 logger.warning("Access blocked, returning hardcoded product list")
                 return _get_hardcoded_products()
-            
+
             # Get the JSON response from the body
             json_data = await response.json()
         except Exception as e:
             await browser.close()
             logger.warning(f"Failed to parse JSON response, returning hardcoded product list: {e}")
             return _get_hardcoded_products()
-            
+
         await browser.close()
 
     products = await _parse_response_data(json_data, filters)
@@ -180,14 +180,16 @@ def _prepare_request_data(filters: Filters, limit: int, offset: int) -> dict:
 async def _parse_response_data(data, filters: Filters) -> list[Product]:
     try:
         products = []
-        
+
         # Check if data structure is valid
         if not data or "data" not in data or not data["data"] or "categories" not in data["data"]:
             logger.warning("Invalid JSON structure in response, returning hardcoded product list")
+            if data is not None:
+                logger.warning("Example of invalid data: %s", data)
             return _get_hardcoded_products()
-            
+
         data = data["data"]["categories"]
-        
+
         # Check if categories data exists
         if not data:
             logger.warning("No categories data in response, returning hardcoded product list")
@@ -221,18 +223,18 @@ async def set_extra_data(product: Product):
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page(locale="de-DE")
-        
+
         # Set headers
         await page.set_extra_http_headers(HEADERS)
-        
+
         # Navigate to the product URL
         response = await page.goto(product.product_url, wait_until="networkidle")
-        
+
         if response.status != 200:
             logger.error("Request to product detail failed. status: %s, url: %s", response.status, product.product_url)
             await browser.close()
             return
-        
+
         # Get the HTML content
         html = await page.content()
         await browser.close()
